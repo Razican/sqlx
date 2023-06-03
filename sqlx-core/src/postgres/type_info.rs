@@ -160,6 +160,11 @@ impl PgTypeInfo {
         PgType::try_from_oid(oid).map(Self)
     }
 
+    /// Returns the OID for this type, if any.
+    pub fn try_oid(&self) -> Option<Oid> {
+        self.0.try_oid()
+    }
+
     /// Returns the _kind_ (simple, array, enum, etc.) for this type.
     pub fn kind(&self) -> &PgTypeKind {
         self.0.kind()
