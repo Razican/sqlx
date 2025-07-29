@@ -5,6 +5,7 @@ use crate::database::Database;
 use crate::error::Error;
 use crate::pool::{deadline_as_timeout, CloseEvent, Pool, PoolOptions};
 use crossbeam_queue::ArrayQueue;
+use tracing::trace;
 
 use crate::sync::{AsyncSemaphore, AsyncSemaphoreReleaser};
 
@@ -197,7 +198,7 @@ impl<DB: Database> PoolInner<DB> {
         }
     }
 
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub(super) fn release(&self, floating: Floating<DB, Live<DB>>) {
         // `options.after_release` and other checks are in `PoolConnection::return_to_pool()`.
 
@@ -217,7 +218,7 @@ impl<DB: Database> PoolInner<DB> {
     /// Try to atomically increment the pool size for a new connection.
     ///
     /// Returns `Err` if the pool is at max capacity already or is closed.
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub(super) fn try_increment_size<'a>(
         self: &'a Arc<Self>,
         permit: AsyncSemaphoreReleaser<'a>,
@@ -320,7 +321,7 @@ impl<DB: Database> PoolInner<DB> {
         Ok(acquired)
     }
 
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self, guard))]
     pub(super) async fn connect(
         self: &Arc<Self>,
         deadline: Instant,
@@ -402,7 +403,7 @@ impl<DB: Database> PoolInner<DB> {
     }
 
     /// Try to maintain `min_connections`, returning any errors (including `PoolTimedOut`).
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn try_min_connections(self: &Arc<Self>, deadline: Instant) -> Result<(), Error> {
         while self.size() < self.options.min_connections {
             trace!("min connection size not enough. Size: {}", self.size());
