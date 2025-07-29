@@ -534,6 +534,7 @@ impl<DB: Database> PoolOptions<DB> {
     /// This ensures the configuration is correct.
     ///
     /// The total number of connections opened is <code>max(1, [min_connections][Self::min_connections])</code>.
+    #[tracing::instrument(level = "trace")]
     pub async fn connect_with(
         self,
         options: <DB::Connection as Connection>::Options,
@@ -542,6 +543,7 @@ impl<DB: Database> PoolOptions<DB> {
         let deadline = Instant::now() + self.acquire_timeout;
 
         let inner = PoolInner::new_arc(self, options);
+        trace!("inner created");
 
         if inner.options.min_connections > 0 {
             // If the idle reaper is spawned then this will race with the call from that task
@@ -549,10 +551,14 @@ impl<DB: Database> PoolOptions<DB> {
             inner.try_min_connections(deadline).await?;
         }
 
+        trace!("min connections available");
+
         // If `min_connections` is nonzero then we'll likely just pull a connection
         // from the idle queue here, but it should at least get tested first.
         let conn = inner.acquire().await?;
+        trace!("conn created");
         inner.release(conn);
+        trace!("released");
 
         Ok(Pool(inner))
     }

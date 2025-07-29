@@ -221,6 +221,7 @@ pub trait DatabaseError: 'static + Send + Sync + StdError {
     fn into_error(self: Box<Self>) -> Box<dyn StdError + Send + Sync + 'static>;
 
     #[doc(hidden)]
+    #[tracing::instrument(level = "trace")]
     fn is_transient_in_connect_phase(&self) -> bool {
         false
     }

@@ -197,6 +197,7 @@ impl<DB: Database> PoolInner<DB> {
         }
     }
 
+    #[tracing::instrument(level = "trace")]
     pub(super) fn release(&self, floating: Floating<DB, Live<DB>>) {
         // `options.after_release` and other checks are in `PoolConnection::return_to_pool()`.
 
@@ -216,6 +217,7 @@ impl<DB: Database> PoolInner<DB> {
     /// Try to atomically increment the pool size for a new connection.
     ///
     /// Returns `Err` if the pool is at max capacity already or is closed.
+    #[tracing::instrument(level = "trace")]
     pub(super) fn try_increment_size<'a>(
         self: &'a Arc<Self>,
         permit: AsyncSemaphoreReleaser<'a>,
@@ -318,6 +320,7 @@ impl<DB: Database> PoolInner<DB> {
         Ok(acquired)
     }
 
+    #[tracing::instrument(level = "trace")]
     pub(super) async fn connect(
         self: &Arc<Self>,
         deadline: Instant,
@@ -331,6 +334,7 @@ impl<DB: Database> PoolInner<DB> {
         let max_backoff = deadline_as_timeout(deadline)? / 5;
 
         loop {
+            trace!("looping connecting!");
             let timeout = deadline_as_timeout(deadline)?;
 
             // clone the connect options arc so it can be used without holding the RwLockReadGuard
@@ -341,11 +345,14 @@ impl<DB: Database> PoolInner<DB> {
                 .expect("write-lock holder panicked")
                 .clone();
 
+            trace!("we have connect options");
+
             // result here is `Result<Result<C, Error>, TimeoutError>`
             // if this block does not return, sleep for the backoff timeout and try again
             match crate::rt::timeout(timeout, connect_options.connect()).await {
                 // successfully established connection
                 Ok(Ok(mut raw)) => {
+                    trace!("connection established");
                     // See comment on `PoolOptions::after_connect`
                     let meta = PoolConnectionMetadata {
                         age: Duration::ZERO,
@@ -384,6 +391,8 @@ impl<DB: Database> PoolInner<DB> {
                 Err(_) => return Err(Error::PoolTimedOut),
             }
 
+            trace!("connection refused, waiting for some time");
+
             // If the connection is refused, wait in exponentially
             // increasing steps for the server to come up,
             // capped by a factor of the remaining time until the deadline
@@ -393,8 +402,10 @@ impl<DB: Database> PoolInner<DB> {
     }
 
     /// Try to maintain `min_connections`, returning any errors (including `PoolTimedOut`).
+    #[tracing::instrument(level = "trace")]
     pub async fn try_min_connections(self: &Arc<Self>, deadline: Instant) -> Result<(), Error> {
         while self.size() < self.options.min_connections {
+            trace!("min connection size not enough. Size: {}", self.size());
             // Don't wait for a semaphore permit.
             //
             // If no extra permits are available then we shouldn't be trying to spin up
@@ -410,7 +421,9 @@ impl<DB: Database> PoolInner<DB> {
 
             // We skip `after_release` since the connection was never provided to user code
             // besides `after_connect`, if they set it.
+            trace!("trying out a connect-release");
             self.release(self.connect(deadline, guard).await?);
+            trace!("connect-release done");
         }
 
         Ok(())

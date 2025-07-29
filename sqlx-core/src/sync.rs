@@ -71,6 +71,7 @@ impl AsyncSemaphore {
         crate::rt::missing_rt(permits)
     }
 
+    #[tracing::instrument(level = "trace")]
     pub fn try_acquire(&self, permits: u32) -> Option<AsyncSemaphoreReleaser<'_>> {
         #[cfg(all(feature = "_rt-async-std", not(feature = "_rt-tokio")))]
         return Some(AsyncSemaphoreReleaser {
